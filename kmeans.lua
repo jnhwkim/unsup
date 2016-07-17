@@ -10,9 +10,9 @@
 --
 --   < returns the k means (centroids) + the counts per centroid
 --
-function unsup.kmeans(x, k, niter, batchsize, callback, verbose)
+function unsup.kmeans(x, k, niter, centroids, batchsize, callback, verbose)
    -- args
-   local help = 'centroids,count = unsup.kmeans(Tensor(npoints,dim), k [, niter, batchsize, callback, verbose])'
+   local help = 'centroids,count = unsup.kmeans(Tensor(npoints,dim), k [, niter, centroids, batchsize, callback, verbose])'
    x = x or error('missing argument: ' .. help)
    k = k or error('missing argument: ' .. help)
    niter = niter or 1
@@ -36,10 +36,14 @@ function unsup.kmeans(x, k, niter, batchsize, callback, verbose)
 
    -- initialize means
    local x2 = sum(pow(x,2),2)
-   local centroids = x.new(k,ndims):normal()
-   for i = 1,k do
-      centroids[i]:div(centroids[i]:norm())
+   local centroids
+   if not centroids then
+      centroids = x.new(k,ndims):normal()
+      for i = 1,k do
+         centroids[i]:div(centroids[i]:norm())
+      end
    end
+   local lbs = torch.Tensor(nsamples)
    local totalcounts = x.new(k):zero()
       
    -- callback?
@@ -57,6 +61,7 @@ function unsup.kmeans(x, k, niter, batchsize, callback, verbose)
       local summation = x.new(k,ndims):zero()
       local counts = x.new(k):zero()
       local loss = 0
+      lbs:fill(-1)
 
       -- process batch
       for i = 1,nsamples,batchsize do
@@ -73,6 +78,7 @@ function unsup.kmeans(x, k, niter, batchsize, callback, verbose)
          end
          local val,labels = max(tmp,1)
          loss = loss + sum(x2[{ {i,lasti} }]*0.5 - val:t())
+         lbs:narrow(1,i,m):copy(labels)
 
          -- count examplars per template
          local S = x.new(m,k):zero()
@@ -101,5 +107,5 @@ function unsup.kmeans(x, k, niter, batchsize, callback, verbose)
    end
 
    -- done
-   return centroids:reshape(k_size),totalcounts
+   return centroids:reshape(k_size),lbs,totalcounts
 end
